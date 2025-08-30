@@ -9,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from sqlalchemy import create_engine
+import plotly.figure_factory as ff
 
 # ---------------------- Page Config ----------------------
 st.set_page_config(page_title="IMDb Movies Dashboard", layout="wide")
@@ -140,7 +141,7 @@ if st.session_state.page == "Dashboard Overview":
             title="",
             text=[f"{count:,}" for count in genre_counts.values],
             color=genre_counts.values,
-            color_continuous_scale='viridis'
+            color_continuous_scale='fall'
         )
         fig1.update_traces(textposition='outside')
         fig1.update_layout(
@@ -153,15 +154,22 @@ if st.session_state.page == "Dashboard Overview":
 
     with col2:
         st.subheader("⭐ Rating Distribution")
-        fig2 = px.histogram(
-            filtered_df, 
-            x='rating', 
-            nbins=20, 
-            title="",
-            labels={'rating': 'Rating', 'count': 'Count'},
-            opacity=0.7
+
+        # Create histogram + KDE curve in Plotly
+        fig2 = ff.create_distplot(
+            [filtered_df['rating']],   # Data must be inside a list
+            group_labels=['Ratings'],  # Legend label
+            colors=["#5DE2E7"],       # Custom color
+            bin_size=0.5               # Adjust bin width
         )
-        fig2.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=10))
+
+        fig2.update_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=30, b=10),
+            xaxis_title="Rating",
+            yaxis_title="Density"
+        )
+
         st.plotly_chart(fig2, use_container_width=True)
 
     # ---------------------- Third Row: Comparative Analysis ----------------------
@@ -178,7 +186,7 @@ if st.session_state.page == "Dashboard Overview":
             title="",
             text=[f"{dur:.0f} min" for dur in avg_duration.values],
             color=avg_duration.values,
-            color_continuous_scale='blues'
+            color_continuous_scale='picnic'
         )
         fig3.update_traces(textposition='outside')
         fig3.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=10), showlegend=False)
@@ -225,7 +233,7 @@ if st.session_state.page == "Dashboard Overview":
         st.dataframe(leaders_display, use_container_width=True, height=300)
 
     # ---------------------- Fifth Row: Heatmap & Correlation ----------------------
-    col1, col2 = st.columns([3, 2])
+    col1, col2, col3 = st.columns([2.5,3,3])
 
     with col1:
         st.subheader("🔥 Ratings Heatmap")
@@ -235,7 +243,7 @@ if st.session_state.page == "Dashboard Overview":
             labels=dict(x="", y="Genre", color="Rating"),
             title="",
             aspect="auto",
-            color_continuous_scale='YlGnBu',
+            color_continuous_scale='temps',
             text_auto=True
         )
         fig5.update_xaxes(showticklabels=False)
@@ -243,47 +251,28 @@ if st.session_state.page == "Dashboard Overview":
         st.plotly_chart(fig5, use_container_width=True)
 
     with col2:
-        st.subheader("🔗 Correlation Analysis")
-        fig6 = px.scatter(
-            filtered_df,
-            x='rating',
-            y='voters',
-            hover_data=['title', 'genre'],
-            trendline="ols",
-            title="",
-            labels={'rating': 'Rating', 'voters': 'Votes'},
-            log_y=True
+        st.subheader("📊 Correlation Heatmap")
+
+        # Compute correlation matrix
+        corr = filtered_df[['rating', 'voters', 'duration']].corr()
+
+        # Plotly heatmap
+        fig_corr = px.imshow(
+            corr,
+            text_auto=True,
+            aspect="auto",
+            color_continuous_scale="spectral",
+            zmin=-1, zmax=1,
+            labels=dict(color="Correlation"),
         )
-        
-        correlation = filtered_df['rating'].corr(np.log(filtered_df['voters'] + 1))
-        fig6.add_annotation(
-            x=0.05, y=0.95,
-            xref="paper", yref="paper",
-            text=f"Correlation: {correlation:.3f}",
-            showarrow=False,
-            bgcolor="white",
-            bordercolor="black",
-            borderwidth=1
+
+        fig_corr.update_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=30, b=10)
         )
+
+        st.plotly_chart(fig_corr, use_container_width=True)
         
-        fig6.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=10))
-        st.plotly_chart(fig6, use_container_width=True)
-
-    # ---------------------- Sixth Row: Extremes & Pie Chart ----------------------
-    col1, col2, col3 = st.columns([2, 2, 3])
-
-    with col1:
-        st.subheader("🎬 Shortest Movies")
-        shortest = filtered_df.nsmallest(5, 'duration')[['title', 'duration']].copy()
-        shortest['duration'] = shortest['duration'].apply(lambda x: f"{x:.0f} min")
-        st.dataframe(shortest, use_container_width=True, height=200)
-
-    with col2:
-        st.subheader("🎥 Longest Movies")
-        longest = filtered_df.nlargest(5, 'duration')[['title', 'duration']].copy()
-        longest['duration'] = longest['duration'].apply(lambda x: f"{x:.0f} min")
-        st.dataframe(longest, use_container_width=True, height=200)
-
     with col3:
         st.subheader("🥇 Votes by Genre")
         votes_by_genre = filtered_df.groupby('genre')['voters'].sum().sort_values(ascending=False)
@@ -300,6 +289,23 @@ if st.session_state.page == "Dashboard Overview":
         )
         fig7.update_layout(height=250, margin=dict(l=10, r=10, t=30, b=10), showlegend=False)
         st.plotly_chart(fig7, use_container_width=True)
+
+    # ---------------------- Sixth Row: Extremes & Pie Chart ----------------------
+    col1, col2= st.columns([2, 2])
+
+    with col1:
+        st.subheader("🎬 Shortest Movies")
+        shortest = filtered_df.nsmallest(5, 'duration')[['title', 'duration']].copy()
+        shortest['duration'] = shortest['duration'].apply(lambda x: f"{x:.0f} min")
+        st.dataframe(shortest, use_container_width=True, height=200)
+
+    with col2:
+        st.subheader("🎥 Longest Movies")
+        longest = filtered_df.nlargest(5, 'duration')[['title', 'duration']].copy()
+        longest['duration'] = longest['duration'].apply(lambda x: f"{x:.0f} min")
+        st.dataframe(longest, use_container_width=True, height=200)
+
+
 
     # ---------------------- Footer ----------------------
     st.markdown("---")
@@ -436,14 +442,27 @@ else:
             st.plotly_chart(fig, use_container_width=True)
         
         with col2:
-            # Rating distribution of filtered results
-            fig = px.histogram(
-                filtered_data, 
-                x='rating', 
-                nbins=20, 
-                title="Rating Distribution in Filtered Results"
+            # Histogram with density curve (KDE)
+            hist_data = [filtered_data['rating']]
+            group_labels = ['Ratings']
+
+            fig = ff.create_distplot(
+                hist_data, 
+                group_labels, 
+                bin_size=1,   # adjust bin size
+                colors=['#58DB25']  # vibrant teal
             )
+
+            fig.update_layout(
+                title="Rating Distribution in Filtered Results",
+                height=500,
+                margin=dict(l=10, r=10, t=30, b=10),
+                xaxis_title="Rating",
+                yaxis_title="Density / Count"
+            )
+
             st.plotly_chart(fig, use_container_width=True)
+
     
     else:
         st.warning("No movies match your filter criteria. Please try different filters.")
